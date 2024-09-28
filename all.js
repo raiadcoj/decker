@@ -324,6 +324,7 @@ const CONT_SABOTAGE_IO		= 6;
 const CONT_CRASH_SYS		= 7;
 const CONT_BACKDOOR			= 8;
 const CONT_RUN_PROGRAM		= 9;
+const CONT_SILENCE_ALERT    = 10;
 
 // Contract Targets
 // Datastore targets
@@ -361,6 +362,8 @@ const CT_CPU				= 25;
 const CT_NODE_IO			= 26;
 const CT_NODE_DS			= 27;
 const CT_NODE_CPU			= 28;
+// Silence Alert
+const CT_COP_SECURITY       = 29;
 
 // Contract flags
 const CF_NO_ALARMS	= 0x00000001; // Can't set off an alarm
@@ -460,6 +463,7 @@ const STATE_QUERIED3		= 0x08;	// Queried player, waiting for response
 const STATE_GUARDING_H		= 0x11;	// Guarding, but knows hostile
 const STATE_ATTACKING		= 0x12;	// Black ice attacking/chasing the player,
 const STATE_MOVING_H		= 0x13;	// White ice returning to home node
+//const STATE_SEARCHING_H		= 0x14; // Searching for a player that it knows exists (only for ICE Memory mode)
 
 const STATE_MASK_HOSTILE	= 0x10;	// Mask to show hostility
 
@@ -3285,6 +3289,8 @@ function Character() {
 	// Game settings
 	this.m_bTooltips = false; // Tooltips enabled
 	this.m_bIronMan = false; // Ironman Mode
+	this.m_bICEMemory = false; //ICE with memory
+	this.m_bHardmode = false; //More ICE spawn
 
 	//------------------
 	// Basic Attributes
@@ -3980,6 +3986,8 @@ Character.prototype.Save = function(Buffer) {
 	// Basic Attributes
 	Buffer.addString(this.m_szName);
 	Buffer.addInteger(this.m_bIronMan);
+	Buffer.addInteger(this.m_bICEMemory);
+	Buffer.addInteger(this.m_bHardmode);
 	Buffer.addInteger(this.m_bTooltips);
 	Buffer.addInteger(this.m_nCredits);
 	Buffer.addInteger(this.m_nLifestyle);
@@ -4136,6 +4144,8 @@ Character.prototype.Load = function(Buffer, version) {
 	this.m_szName = Buffer.getString();
 	if (version >= 10) {
 		this.m_bIronMan = !!Buffer.getInteger();
+		this.m_bICEMemory = !!Buffer.getInteger();
+		this.m_bHardmode = !!Buffer.getInteger();
 		this.m_bTooltips = !!Buffer.getInteger();
 	}
 	this.m_nCredits = Buffer.getInteger();
@@ -4350,6 +4360,7 @@ const g_szContractTypeText = [
 	"Crash System",
 	"Create Backdoor",
 	"Run Program",
+	"Silence Alert",
 ];
 
 // Target Set Limits
@@ -4634,6 +4645,8 @@ Contract.prototype.GetDescriptiveText = function() {
 		case CONT_RUN_PROGRAM:
 			szText = "A client needs a special program activated on the "+this.m_szSystemName+" system. Locate the target node(s) by running the program, then activate the program within the node. You must remain in the node until the program finishes running.";
 			break;
+		case CONT_SILENCE_ALERT:
+			szText = "A client needs to have an alert cancelled in the "+this.m_szSystemName+". You must locate the Security Node and return the system alert to green."
 	}
 
 	// Add additional lines for various mission options
@@ -4684,6 +4697,7 @@ Contract.prototype.HintAvailable = function() {
 		//case CONT_CRASH_SYS:
 		//case CONT_BACKDOOR:
 		//case CONT_RUN_PROGRAM:
+		//case CONT_SILENCE_ALERT:
 		default:
 			return false;
 	}
@@ -4761,16 +4775,17 @@ Contract.prototype.Generate = function(bEasy) {
 	//
 	// Choose a mission type
 	let i = Random(bEasy ? 40 : 100);
-	if      (i < 15) this.m_nType = CONT_DEACTIVATE_IO;	// Deactivate - 15%
-	else if (i < 30) this.m_nType = CONT_ACTIVATE_IO;	// Activate - 15%
-	else if (i < 40) this.m_nType = CONT_SABOTAGE_IO;	// Sabotage - 10%
-	else if (i < 55) this.m_nType = CONT_STEAL;			// Steal files - 15%
-	else if (i < 65) this.m_nType = CONT_STEAL_ERASE;	// Steal and erase - 10%
-	else if (i < 75) this.m_nType = CONT_ERASE;			// Erase - 10%
-	else if (i < 85) this.m_nType = CONT_EDIT;			// Edit - 10%
-	else if (i < 90) this.m_nType = CONT_CRASH_SYS;		// Crash - 5%
-	else if (i < 95) this.m_nType = CONT_BACKDOOR;		// Backdoor - 5%
-	else             this.m_nType = CONT_RUN_PROGRAM;	// Run Program - 5%
+	if      (i < 10) this.m_nType = CONT_DEACTIVATE_IO;	// Deactivate - 10%
+	else if (i < 20) this.m_nType = CONT_ACTIVATE_IO;	// Activate - 10%
+	else if (i < 30) this.m_nType = CONT_SABOTAGE_IO;	// Sabotage - 10%
+	else if (i < 45) this.m_nType = CONT_STEAL;			// Steal files - 15%
+	else if (i < 50) this.m_nType = CONT_STEAL_ERASE;	// Steal and erase - 5%
+	else if (i < 60) this.m_nType = CONT_ERASE;			// Erase - 10%
+	else if (i < 70) this.m_nType = CONT_EDIT;			// Edit - 10%
+	else if (i < 80) this.m_nType = CONT_CRASH_SYS;		// Crash - 10%
+	else if (i < 85) this.m_nType = CONT_BACKDOOR;		// Backdoor - 5%
+	else if (i < 95) this.m_nType = CONT_RUN_PROGRAM;	// Run Program - 10%
+	else 			 this.m_nType = CONT_SILENCE_ALERT; // Silence Alert - 5%
 
 	// Generate the valid target flags for the corporation. Note that this is used later for
 	// generating file types for datastores in the matrix.
@@ -4809,6 +4824,10 @@ Contract.prototype.Generate = function(bEasy) {
 			this.m_nTargetObject = CT_MIN_RUNPROG + Random(1 + CT_MAX_RUNPROG - CT_MIN_RUNPROG);
 			bDone = true;
 			break;
+		case CONT_SILENCE_ALERT :
+			this.m_nTargetObject = CT_COP_SECURITY;
+			bDone = true;
+			break;
 	}
 
 	// Choose until we get a valid one
@@ -4820,10 +4839,11 @@ Contract.prototype.Generate = function(bEasy) {
 
 	if (!bEasy) {
 		// Check for mission enhancers
-		// Check for no alarms (20% chance, 40% for edit, 50% for backdoor, no chance for crash)
+		// Check for no alarms (20% chance, 40% for edit, 50% for backdoor, no chance for crash or silence alert)
 		let nChance;
 		switch (this.m_nType) {
 			case CONT_CRASH_SYS:
+			case CONT_SILENCE_ALERT:
 				nChance = 0;
 				break;
 			case CONT_EDIT:
@@ -4852,7 +4872,7 @@ Contract.prototype.Generate = function(bEasy) {
 		}
 
 		// Check for multiple targets
-		if ( this.m_nTargetObject !== CT_CPU && this.m_nTargetObject !== CT_NODE_CPU ) {
+		if ( this.m_nTargetObject !== CT_CPU && this.m_nTargetObject !== CT_NODE_CPU && this.m_nTargetObject !== CT_COP_SECURITY) {
 			// 2.5% at level 1. 50% chance at level 20.
 			if (Random(40) < nBaseDifficulty) {
 				// 2 to 5 targets
@@ -5155,6 +5175,19 @@ function GetContractStatus(bInProgress, bCrash) {
 				}
 			});
 			break;
+
+		case CONT_SILENCE_ALERT      :
+			if (g_pChar.m_pSystem.m_nAlert === ALERT_GREEN) {
+				szBreakdown += "(C) Alert status has returned to green \n";
+			} else {
+				bIncomplete = true;
+				if (bInProgress)
+					szBreakdown += "(I) Alert status has not returned to green.\n";
+				else
+					szBreakdown += "(I) Alert status was not returned to green.\n";
+			};
+			break;
+			
 	}
 
 	// Check for no alarms
@@ -5591,7 +5624,8 @@ System.prototype.Generate = function(nCorporation, nSystemSize, dwFlags) {
 		// CPU Quests
 		case CONT_CRASH_SYS:
 		case CONT_BACKDOOR:
-			// The CPU is the node
+		case CONT_SILENCE_ALERT:
+			// The CPU or Security Node is the node
 			// No need to mark anything
 			break;
 
@@ -6674,7 +6708,7 @@ Node.prototype.GenerateICE = function() {
 	else
 		nNumIce = 3;
 
-	if (nNumIce > 2 && Config.difficulty < 1) nNumIce = 2;
+	if (nNumIce > 2 && g_pChar.m_bHardmode === false) nNumIce = 2;
 
 	// If this is the system portal, max at 1 ice to make it a little easier to get in
 	if ( this.m_pParentArea.m_pSystem.m_pSystemPortalOut === this && nNumIce > 1 )
@@ -8047,11 +8081,13 @@ Ice.prototype.DoAction_Moving = function() {
 			}
 		}
 
-		// Clear the hostile flag
-		this.m_nState = STATE_MOVING;
+		// Clear the hostile flag unless "ICE Memory" is active
+		if (g_pChar.m_bICEMemory === false) {
+			this.m_nState = STATE_MOVING;
 
-		// Move towards the target node
-		this.DoMove(nLowestDir);
+			// Move towards the target node
+			this.DoMove(nLowestDir);
+		}
 	}
 }
 
@@ -9083,6 +9119,8 @@ GameFile.New = function() {
 		g_pChar.m_szName = R.name;
 		g_pChar.m_nImage = R.avatar;
 		g_pChar.m_bIronMan = R.ironman;
+		g_pChar.m_bICEMemory = R.icememory;
+		g_pChar.m_bHardmode = R.hardmode;
 		g_pChar.m_bTooltips = R.tooltips;
 
 		Popup.closeAll();
@@ -9126,6 +9164,8 @@ GameFile.slotData = function(slot) {
 	return {
 		avatar     : pChar.m_nImage,
 		ironman    : pChar.m_bIronMan,
+		icememory  : pChar.m_bICEMemory,
+		hardmode   : pChar.m_bHardmode,
 		name       : pChar.m_szName,
 		reputation : g_szRepLevelString[pChar.m_nRepLevel],
 		money      : pChar.m_nCredits,
@@ -10217,8 +10257,10 @@ function DoLeaveNode() {
 					pIce.m_nState = STATE_SEARCHING;
 				break;
 			case STATE_GUARDING_H:
-				// Change them back to guarding
-				pIce.m_nState = STATE_GUARDING;
+				// Change them back to guarding unless ICE Memory is active
+				if (g_pChar.m_bICEMemory === false) {
+					pIce.m_nState = STATE_GUARDING;
+				}
 				break;
 			// All others stay the same
 		}
@@ -11812,7 +11854,7 @@ MV.UpdateControls = function() {
 	MV.l_bmbButton[0].enable( g_pChar.m_pDefAttackProgram !== null && (g_pChar.m_pTargettedIce !== null || g_pChar.m_pDefAttackProgram.m_nClass === PROGRAM_ATTACK_A) ); // attack
 	MV.l_bmbButton[2].enable( g_pChar.FindProgram(PROGRAM_DECEIVE) !== null && g_pChar.m_pTargettedIce !== null ); // deceive
 	MV.l_bmbButton[6].enable( g_pChar.FindProgram(PROGRAM_ANALYZE) !== null && g_pChar.m_pTargettedIce !== null ); // view ice
-	MV.l_bmbButton[8].enable( (g_pChar.m_pCurrentNode.m_nType === NT_DS || g_pChar.m_pCurrentNode.m_nType === NT_IO) && g_pChar.FindProgram(PROGRAM_SCAN) !== null ); // scan
+	MV.l_bmbButton[8].enable( (g_pChar.m_pCurrentNode.m_nType === NT_DS || g_pChar.m_pCurrentNode.m_nType === NT_IO || g_pChar.m_pCurrentNode.m_nType === NT_COP) && g_pChar.FindProgram(PROGRAM_SCAN) !== null ); // scan
 
 	// Software control buttons
 	let pProgram = MV.l_tProgramList.getSelected();
@@ -12241,7 +12283,7 @@ var Anim = {};
 // popup_newgame.js
 
 {
-	let [obj,avatarImg,ironHelp] = HTMLbuilder(
+	let [obj,avatarImg,ironHelp,memoryHelp,diffHelp] = HTMLbuilder(
 		["div", true, [
 			["h2", {textContent:"New Character"}],
 			["div", [
@@ -12291,6 +12333,21 @@ var Anim = {};
 						]],
 						["span", true, {textContent:"(?)",style:{color:"blue",cursor:"help"}}],
 					]],
+					["div",[
+						["label", [
+							["input", {type:"checkbox"}],
+							["span", {textContent:"ICE Memory "}],
+						]],
+						["span", true, {textContent:"(?)",style:{color:"blue",cursor:"help"}}],
+					]],
+
+					["div", [
+						["label", [
+							["input", {type:"checkbox"}],
+							["span", {textContent:"Hard Difficulty"}],
+						]],
+						["span", true, {textContent:"(?)",style:{marginLeft:".5em",color:"blue",cursor:"pointer"}}],
+					]],
 					["div", [
 						["label", [
 							["input", {type:"checkbox"}],
@@ -12309,6 +12366,14 @@ var Anim = {};
 
 	ironHelp.onclick = () => {
 		Popup.alert("Ironmen don't need to save in the matrix.");
+	}
+
+	memoryHelp.onclick = () => {
+		Popup.alert("Ice will remember that you are hostile, even if you leave the node. \nThe only way to permanently silence them is to destroy them.")
+	}
+
+	diffHelp.onclick = () => {
+		Popup.alert("This fixes a bug in the original code that caused fewer enemies to spawn.");
 	}
 
 	let inputs = [...obj.getElementsByTagName("input")];
@@ -12334,6 +12399,8 @@ var Anim = {};
 		inputs[5].checked = false;
 		inputs[6].checked = false;
 		inputs[7].checked = false;
+		inputs[8].checked = false;
+		inputs[9].checked = false;
 		avatar_number = 1;
 		avatar_prev();
 	}
@@ -12368,7 +12435,9 @@ var Anim = {};
 			avatar : avatar_number,
 			bonus : bonus,
 			ironman : inputs[6].checked,
-			tooltips : inputs[7].checked,
+			icememory : inputs[7].checked,
+			hardmode  : inputs[8].checked,
+			tooltips : inputs[9].checked,
 		};
 		Popup.close(R);
 	}
@@ -12431,6 +12500,8 @@ var Anim = {};
 				html += "<div style='display:inline-block;width:24px;height:24px;background-image:url(img/avatars.png);background-position-x:"+(-24*data.avatar)+"px'></div>";
 				html += "<br><b>"+escapeHTML(data.name)+"</b>";
 				html += "<br>"+(data.ironman ? "(Ironman)" : "");
+				html += "<br>"+(data.icememory ? "(ICE Memory)" : "");
+				html += "<br>"+(data.hardmode ? "(Hard Difficulty)" : "");
 				html += "<br>";
 				html += "<br>"+escapeHTML(data.reputation);
 				html += "<br>"+data.money+" credits";
@@ -12604,6 +12675,10 @@ var Anim = {};
 		if (!g_pChar.m_bBackdoor[g_pChar.m_pCurrentContract.m_nCorporation]) {
 			PlayGameSound(SOUND_ENTERMATRIX);
 			view_matrix_2(pEntryNode);
+			//Automatically set the alert level to red if the contract is Silence Alert
+			if (g_pChar.m_pCurrentContract.m_nType === CONT_SILENCE_ALERT) {
+				DoSetAlert(null,ALERT_RED)
+			}
 			return;
 		}
 
@@ -12611,6 +12686,10 @@ var Anim = {};
 			if (R) pEntryNode = g_pChar.m_pSystem.m_pSystemCPU;
 			PlayGameSound(SOUND_ENTERMATRIX);
 			view_matrix_2(pEntryNode);
+			//Automatically set the alert level to red if the contract is Silence Alert
+			if (g_pChar.m_pCurrentContract.m_nType === CONT_SILENCE_ALERT) {
+				DoSetAlert(null,ALERT_RED)
+			}
 		});
 	}
 	function view_matrix_2(pEntryNode) {
@@ -12723,9 +12802,11 @@ var Anim = {};
 		txtMoney.textContent = g_pChar.m_nCredits; // money
 		txtHealth.textContent = g_pChar.m_nHealthPhysical*HEALTH_INCREMENT + "%"; // health
 
-		// other data (date / ironman)
+		// other data (date / settings)
 		let extra = g_szMonthNames[g_pChar.m_nMonth] + " " + (g_pChar.m_nDayOfMonth+1) + ", " + g_pChar.m_nYear;
 		if (g_pChar.m_bIronMan) extra += "\n(Ironman)";
+		if (g_pChar.m_bICEMemory) extra += "\n(Ice Memory)";
+		if (g_pChar.m_bHardmode) extra += "\n(Hard Difficulty)"
 		txtDate.textContent = extra;
 
 		// skills
@@ -14622,7 +14703,7 @@ var Anim = {};
 // popup_options.js
 
 {
-	let [obj,helpDiff,inpVol,txtVol] = HTMLbuilder(
+	let [obj,inpVol,txtVol] = HTMLbuilder(
 		["div", true, [
 			["h2", {textContent:"Options"}],
 			["div", {className:"flexV",style:{alignItems:"center"}}, [
@@ -14647,13 +14728,6 @@ var Anim = {};
 							["input", {type:"checkbox"}],
 							["span", {textContent:"Tooltips"}],
 						]],
-					]],
-					["div", [
-						["label", [
-							["input", {type:"checkbox"}],
-							["span", {textContent:"Hard Difficulty"}],
-						]],
-						["span", true, {textContent:"(?)",style:{marginLeft:".5em",color:"blue",cursor:"pointer"}}],
 					]],
 					["div", [
 						["label", [
@@ -14685,17 +14759,11 @@ var Anim = {};
 	);
 
 
-
-	helpDiff.onclick = () => {
-		Popup.alert("This fixes a bug in the original code, that caused less enemies to spawn.\nApplies only to newly generated Systems.");
-	}
-
 	let inputs = [...obj.getElementsByTagName("input")];
 	inputs[0].onchange = () => { g_pChar.m_bTooltips = inputs[0].checked; };
-	inputs[1].onchange = () => { Config.difficulty = inputs[1].checked; };
-	inputs[2].onchange = () => { Config.mute = !inputs[2].checked; };
-	inputs[3].onchange = () => { Config.viewice = inputs[3].checked; };
-	inputs[4].onchange = () => { Config.warnclose = inputs[4].checked; };
+	inputs[1].onchange = () => { Config.mute = !inputs[1].checked; };
+	inputs[2].onchange = () => { Config.viewice = inputs[2].checked; };
+	inputs[3].onchange = () => { Config.warnclose = inputs[3].checked; };
 	inpVol.oninput = () => {
 		Config.volume = +inpVol.value;
 		txtVol.textContent = Config.volume + "%";
@@ -14723,14 +14791,11 @@ var Anim = {};
 			buttons[1].disabled = false;
 		}
 		inputs[0].checked = g_pChar.m_bTooltips;
-		inputs[1].checked = Config.difficulty;
-		inputs[2].checked = !Config.mute;
-		inputs[3].checked = Config.viewice;
-		inputs[4].checked = Config.warnclose;
+		inputs[1].checked = !Config.mute;
+		inputs[2].checked = Config.viewice;
+		inputs[3].checked = Config.warnclose;
 		inpVol.value = Config.volume;
 
-		// don't allow difficulty change while in the matrix
-		inputs[1].disabled = g_pChar.m_bOnRun;
 
 		txtVol.textContent = Config.volume + "%";
 	}
