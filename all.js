@@ -462,7 +462,7 @@ const STATE_QUERIED3		= 0x08;	// Queried player, waiting for response
 // Hostile
 const STATE_GUARDING_H		= 0x11;	// Guarding, but knows hostile
 const STATE_ATTACKING		= 0x12;	// Black ice attacking/chasing the player,
-const STATE_MOVING_H		= 0x13;	// White ice returning to home node
+const STATE_MOVING_H		= 0x13;	// Ice returning to home node while remaining hostile
 const STATE_SEARCHING_H		= 0x14; // Searching for a player that it knows exists (only for ICE Memory mode)
 
 const STATE_MASK_HOSTILE	= 0x10;	// Mask to show hostility
@@ -7722,8 +7722,8 @@ Ice.prototype.DoQuery = function() {
 		}
 	}
 
-	// If the decker has a decoy active, set an alert
-	if (g_pChar.m_nDecoyCount > 0) {
+	// If the decker has a decoy active or if the ICE is still hostile, set an alert
+	if (g_pChar.m_nDecoyCount > 0 || (this.m_nState & STATE_MASK_HOSTILE && g_pChar.m_bICEMemory == true)) {
 		// Try to signal an alarm, because we are hostile
 		DoSetAlert(this, ALERT_RED);
 		return true;
@@ -7817,14 +7817,14 @@ Ice.prototype.DoMove = function(nDir) {
 		// Draw the picture
 		MV.l_NodeView.DrawIce(this);
 
-		if ( (this.m_nState & STATE_MASK_HOSTILE) || g_pChar.m_bTraced ) {
-			// If this is a hostile ice, mark all ice in node as hostile
+		if ( ((this.m_nState & STATE_MASK_HOSTILE) && this.m_nState !== STATE_SEARCHING_H) || g_pChar.m_bTraced ) {
+			// If this is a hostile ice that is not currently searching, mark all ice in node as hostile
 			MarkIceAsHostile();
 		} else  {
 			// If there are hostile ice in the node, mark this one as hostile
 			let bHostile = false;
 			g_pChar.m_olCurrentIceList.forEach(pTmpIce => {
-				if (pTmpIce.m_nState & STATE_MASK_HOSTILE)
+				if (pTmpIce.m_nState & STATE_MASK_HOSTILE && pTmpIce.m_nState !== STATE_SEARCHING_H)
 					bHostile = true;
 			});
 
@@ -8064,7 +8064,7 @@ Ice.prototype.DoAction_Moving = function() {
 			// Response IC should wander looking for intruders.
 			this.DoWander();
 			// For non-response, guard
-		} else if ( (this.m_nState & STATE_MASK_HOSTILE) && (this.m_pCurrentNode === g_pChar.m_pCurrentNode || g_pChar.m_bICEMemory === true)) {
+		} else if ( (this.m_nState & STATE_MASK_HOSTILE) && (this.m_pCurrentNode === g_pChar.m_pCurrentNode || g_pChar.m_bICEMemory)) {
 			this.m_nState = STATE_GUARDING_H;
 		} else {
 			this.m_nState = STATE_GUARDING;
@@ -8084,10 +8084,10 @@ Ice.prototype.DoAction_Moving = function() {
 		// Clear the hostile flag unless "ICE Memory" is active
 		if (g_pChar.m_bICEMemory === false) {
 			this.m_nState = STATE_MOVING;
-
-			// Move towards the target node
-			this.DoMove(nLowestDir);
 		}
+		// Move towards the target node
+		this.DoMove(nLowestDir);
+		
 	}
 }
 
@@ -8111,13 +8111,9 @@ Ice.prototype.DoAction_Queried = function() {
 	// Have we been bypassed?
 	if (!this.m_bBypassed) {
 		// Ice has not been bypassed.
-		// If the ice was in hostile searching mode, sound a red alert (should only see the state in ICE Memory mode)
-		if (this.m_nState === STATE_SEARCHING_H){
-			DoSetAlert(this, ALERT_RED)
-		}
 		// If this is the last time, or the player has left the node, sound a yellow alert.
 		// If it is the red alert, go hostile
-		else if (this.m_nState === STATE_QUERIED3 || this.m_nState === STATE_SEARCHING_H || g_pChar.m_pCurrentNode !== this.m_pCurrentNode) {
+		if (this.m_nState === STATE_QUERIED3 || g_pChar.m_pCurrentNode !== this.m_pCurrentNode) {
 			// Sound a yellow alert. May change our state if we are silenced,
 			// or if it goes to red, but only if we are in the player's node.
 			DoSetAlert(this, ALERT_YELLOW);
@@ -8312,7 +8308,7 @@ Ice.prototype.DoAction_Attacking = function() {
 		//If ICE Memory is active, ICE will remember the player and skip the query step if they encounter them again
 		else{
 			if (this.m_nType === ICE_PROBE || this.m_bResponse) {
-				// Probe and response IC will try to search for the player and initiate their 
+				// Probe and response IC will try to search for the player
 				this.m_nState = STATE_SEARCHING_H;
 				this.DoWander();
 			} else {
@@ -8515,7 +8511,14 @@ Ice.prototype.DoAction_2 = function() {
 		case STATE_DESTROYING:
 		case STATE_ATTACKING:
 		case STATE_SEARCHING_H:
-			DoSetAlert(this, ALERT_RED);
+			//Need to avoid this if ICE Memory is true and it's a red alert.
+			if (g_pChar.m_bICEMemory == true){
+				if (g_pChar.m_pSystem.m_nAlert !== ALERT_RED){
+					DoSetAlert(this, ALERT_RED)
+				}
+			}else {
+				DoSetAlert(this, ALERT_RED);
+			}
 	}
 
 	// Process according to current state
@@ -8545,6 +8548,7 @@ Ice.prototype.DoAction_2 = function() {
 			break;
 		case STATE_GUARDING:
 			this.DoAction_Guarding();
+			break; //added a break here since Guarding is separate from hostile guarding
 		case STATE_GUARDING_H:
 			this.DoAction_Guarding_H();
 			break;
