@@ -463,7 +463,7 @@ const STATE_QUERIED3		= 0x08;	// Queried player, waiting for response
 const STATE_GUARDING_H		= 0x11;	// Guarding, but knows hostile
 const STATE_ATTACKING		= 0x12;	// Black ice attacking/chasing the player,
 const STATE_MOVING_H		= 0x13;	// White ice returning to home node
-//const STATE_SEARCHING_H		= 0x14; // Searching for a player that it knows exists (only for ICE Memory mode)
+const STATE_SEARCHING_H		= 0x14; // Searching for a player that it knows exists (only for ICE Memory mode)
 
 const STATE_MASK_HOSTILE	= 0x10;	// Mask to show hostility
 
@@ -8064,7 +8064,7 @@ Ice.prototype.DoAction_Moving = function() {
 			// Response IC should wander looking for intruders.
 			this.DoWander();
 			// For non-response, guard
-		} else if ( (this.m_nState & STATE_MASK_HOSTILE) && this.m_pCurrentNode === g_pChar.m_pCurrentNode ) {
+		} else if ( (this.m_nState & STATE_MASK_HOSTILE) && (this.m_pCurrentNode === g_pChar.m_pCurrentNode || g_pChar.m_bICEMemory === true)) {
 			this.m_nState = STATE_GUARDING_H;
 		} else {
 			this.m_nState = STATE_GUARDING;
@@ -8093,16 +8093,16 @@ Ice.prototype.DoAction_Moving = function() {
 
 Ice.prototype.DoAction_Searching = function() {
 	// If the player is in this node, query him
-	if (this.m_pCurrentNode === g_pChar.m_pCurrentNode && !this.m_bBypassed) {
-		// See if we notice the player
-		if (this.NoticedPlayer()) {
-			if (this.DoQuery()) {
-				// Waiting for response
-				return;
+		if (this.m_pCurrentNode === g_pChar.m_pCurrentNode && !this.m_bBypassed) {
+			// See if we notice the player
+			if (this.NoticedPlayer()) {
+				if (this.DoQuery()) {
+					// Waiting for response
+					return;
+				}
 			}
 		}
-	}
-
+	
 	// Wander randomly
 	this.DoWander();
 }
@@ -8111,10 +8111,13 @@ Ice.prototype.DoAction_Queried = function() {
 	// Have we been bypassed?
 	if (!this.m_bBypassed) {
 		// Ice has not been bypassed.
-
+		// If the ice was in hostile searching mode, sound a red alert (should only see the state in ICE Memory mode)
+		if (this.m_nState === STATE_SEARCHING_H){
+			DoSetAlert(this, ALERT_RED)
+		}
 		// If this is the last time, or the player has left the node, sound a yellow alert.
 		// If it is the red alert, go hostile
-		if (this.m_nState === STATE_QUERIED3 || g_pChar.m_pCurrentNode !== this.m_pCurrentNode) {
+		else if (this.m_nState === STATE_QUERIED3 || this.m_nState === STATE_SEARCHING_H || g_pChar.m_pCurrentNode !== this.m_pCurrentNode) {
 			// Sound a yellow alert. May change our state if we are silenced,
 			// or if it goes to red, but only if we are in the player's node.
 			DoSetAlert(this, ALERT_YELLOW);
@@ -8289,19 +8292,38 @@ Ice.prototype.DoAction_Attacking = function() {
 			}
 		}
 
-		// Player is not near. Give up the chase.
-		if (this.m_nType === ICE_PROBE || this.m_bResponse) {
-			// Probe and response IC will try to search for intruders
-			this.m_nState = STATE_SEARCHING;
-			this.DoWander();
-		} else {
-			// Non-response ice will go home and guard
-			this.m_nState = STATE_MOVING;
-			this.m_pTargetNode = this.m_pHomeNode;
+		//If ICE Memory isn't active, ICE give up and go home, forgetting that the player ever existed.
+		if (g_pChar.m_bICEMemory === false) {
+			// Player is not near. Give up the chase.
+			if (this.m_nType === ICE_PROBE || this.m_bResponse) {
+				// Probe and response IC will try to search for intruders
+				this.m_nState = STATE_SEARCHING;
+				this.DoWander();
+			} else {
+				// Non-response ice will go home and guard
+				this.m_nState = STATE_MOVING;
+				this.m_pTargetNode = this.m_pHomeNode;
 
-			// Redo action with new state
-			this.DoAction_2();
-			return;
+				// Redo action with new state
+				this.DoAction_2();
+				return;
+			}
+		}
+		//If ICE Memory is active, ICE will remember the player and skip the query step if they encounter them again
+		else{
+			if (this.m_nType === ICE_PROBE || this.m_bResponse) {
+				// Probe and response IC will try to search for the player and initiate their 
+				this.m_nState = STATE_SEARCHING_H;
+				this.DoWander();
+			} else {
+				// Non-response ice will go home and guard, still hostile towards the player
+				this.m_nState = STATE_MOVING_H;
+				this.m_pTargetNode = this.m_pHomeNode;
+
+				// Redo action with new state
+				this.DoAction_2();
+				return;
+			}			
 		}
 
 	} else {
@@ -8492,6 +8514,7 @@ Ice.prototype.DoAction_2 = function() {
 		case STATE_GUARDING_H:
 		case STATE_DESTROYING:
 		case STATE_ATTACKING:
+		case STATE_SEARCHING_H:
 			DoSetAlert(this, ALERT_RED);
 	}
 
@@ -8506,6 +8529,7 @@ Ice.prototype.DoAction_2 = function() {
 			this.DoAction_Moving();
 			break;
 		case STATE_SEARCHING:
+		case STATE_SEARCHING_H:
 			this.DoAction_Searching();
 			break;
 		case STATE_QUERIED1:
