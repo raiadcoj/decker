@@ -8264,14 +8264,32 @@ Ice.prototype.DoAction_Guarding = function() {
 			}
 		}
 		// Otherwise, just sleep
+	} else if (this.m_nState === STATE_GUARDING_H) {
+		//Guardian ICE will check to see if any other ICE in the room is already attacking.
+		let bAttacking = false;
+		g_pChar.m_olCurrentIceList.forEach(pTmpIce => {
+			if (pTmpIce.m_nState == STATE_ATTACKING)
+				bAttacking = true;
+		});
+		//If no ICE are hostile and the player re-enters its zone, it will try to do its own query
+		if (this.m_pCurrentNode === g_pChar.m_pCurrentNode && !bAttacking){
+			if (this.NoticedPlayer()) {
+				// Query the player
+				this.DoQuery();
+			}			
+		}
+
+		
 	} else if (this.m_bWasAccessed) {
 		// Character accessed us. Query the player
 		this.DoQuery();
 	}
 }
-Ice.prototype.DoAction_Guarding_H = function() {
-	// Then, do nothing
-}
+//Try doing away with Guarding_H, because it doesn't seem to do anything?
+
+//Ice.prototype.DoAction_Guarding_H = function() {
+//	// Then, do nothing
+//}
 
 Ice.prototype.DoAction_Attacking = function() {
 	// If the player is not in the node, try to follow him
@@ -8323,6 +8341,8 @@ Ice.prototype.DoAction_Attacking = function() {
 		}
 
 	} else {
+		//Mark any ICE that are not hostile as hostile (mostly guardians)
+		MarkIceAsHostile();
 		// Player is in this node. Attack base on ICE type
 		if (this.m_nType === ICE_ATTACK) {
 			// Do a normal attack. First, get a target number
@@ -8547,11 +8567,12 @@ Ice.prototype.DoAction_2 = function() {
 			this.DoAction_Attacking();
 			break;
 		case STATE_GUARDING:
+		case STATE_GUARDING_H:
 			this.DoAction_Guarding();
 			break; //added a break here since Guarding is separate from hostile guarding
-		case STATE_GUARDING_H:
-			this.DoAction_Guarding_H();
-			break;
+//		Try doing away with doaction Guarding_H, since it doesn't do anything?
+//			this.DoAction_Guarding_H();
+//			break;
 		//case STATE_INACTIVE:
 		default:
 			// Do nothing
