@@ -8256,34 +8256,21 @@ Ice.prototype.DoAction_Destroying = function() {
 
 Ice.prototype.DoAction_Guarding = function() {
 	// If we are black ICE and are in the same node as player, query him
-	if (this.m_nType === ICE_ATTACK || this.m_nType === ICE_TRACE) {
-		if (this.m_pCurrentNode === g_pChar.m_pCurrentNode && !this.m_bBypassed) {
+	if (this.m_pCurrentNode === g_pChar.m_pCurrentNode && !this.m_bBypassed) {
+		if (this.m_nType === ICE_ATTACK || this.m_nType === ICE_TRACE || (!this.m_bWasAccessed && this.m_nType === ICE_GUARDIAN && this.m_nState === STATE_GUARDING_H && g_pChar.m_bICEMemory)) {	
 			if (this.NoticedPlayer()) {
 				// Query the player
 				this.DoQuery();
 			}
 		}
-		// Otherwise, just sleep
-	} else if (this.m_nState === STATE_GUARDING_H) {
-		//Guardian ICE will check to see if any other ICE in the room is already attacking.
-		let bAttacking = false;
-		g_pChar.m_olCurrentIceList.forEach(pTmpIce => {
-			if (pTmpIce.m_nState == STATE_ATTACKING)
-				bAttacking = true;
-		});
-		//If no ICE are hostile and the player re-enters its zone, it will try to do its own query
-		if (this.m_pCurrentNode === g_pChar.m_pCurrentNode && !bAttacking){
-			if (this.NoticedPlayer()) {
-				// Query the player
-				this.DoQuery();
-			}			
+		else if (this.m_bWasAccessed && this.m_nState !== STATE_GUARDING_H) {
+			// Character accessed us. Query the player
+			this.DoQuery();
 		}
+		// Otherwise, just sleep
 
 		
-	} else if (this.m_bWasAccessed) {
-		// Character accessed us. Query the player
-		this.DoQuery();
-	}
+	} 
 }
 //Try doing away with Guarding_H, because it doesn't seem to do anything?
 
@@ -9334,6 +9321,11 @@ function MarkIceAsHostile() {
 	g_pChar.m_olCurrentIceList.forEach(pIce => {
 		// Mark as not bypassed
 		pIce.m_bBypassed = false;
+		//Set an accessed flag if the ICE is a guardian in ICE Memory mode
+
+		if (g_pChar.m_bICEMemory === true && pIce.m_nType === ICE_GUARDIAN) {
+			pIce.m_bWasAccessed = true;
+		}
 
 		// If a tapeworm trying to erase a file, don't change
 		if (pIce.m_nState === STATE_DESTROYING) return;
@@ -10006,7 +9998,9 @@ function DoEndPlayerTurn() {
 		pIce.DoAction();
 
 		// Reset some ice stuff
-		pIce.m_bWasAccessed = false;
+		if (!(g_pChar.m_bICEMemory && pIce.m_nState === STATE_GUARDING_H)){
+			pIce.m_bWasAccessed = false;
+		}
 	});
 
 	//---------------
