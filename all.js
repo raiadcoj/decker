@@ -10556,7 +10556,7 @@ function OnUseIO() {
 		// Process depending on type
 		switch (g_pChar.m_pCurrentNode.m_nSubType) {
 			case NST_IO_ALARM:
-				MV.l_MessageView.AddMessage("External alarms have been deactivated. CPU operations will not trigger an alert.", BLUE);
+				MV.l_MessageView.AddMessage("External alarms have been deactivated, and backdoor creation will not trigger an alert.", BLUE);
 				g_pChar.m_pSystem.m_bExternalAlarmsDeactivated = true;
 				g_pChar.m_pCurrentNode.m_bActivated = true;
 				break;
