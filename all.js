@@ -1475,7 +1475,7 @@ DSfile.prototype.Generate = function(pParentNode) {
 				} while (this.m_nContents === PROGRAM_CLIENT);
 			}
 			// Value is rating
-			let nRoll = Random(100);
+			let nRoll = Random(100) + 45 - (3 * g_pChar.m_pSystem.m_nRating);
 			if (nRoll < 15)
 				this.m_nValue = g_pChar.m_pSystem.m_nRating - 2;
 			else if (nRoll < 45)
@@ -6740,25 +6740,26 @@ Node.prototype.GenerateICE = function() {
 		} else if (nNumIce===1) {
 			// Second ice is random black ice. (75% attack, 25% trace)
 			// No Trace ice on L1 and L2
-			if ( nDifficulty > 2 && Random(4) === 0 )
+			if ( nDifficulty > 2 && Random(4) === 0 ){
 				pIce.m_nType = ICE_TRACE;
-			else
+			} else{
 				pIce.m_nType = ICE_ATTACK;
-
+			}
 			// Ice is response if it is in a coprocessor
-			if ( this.m_nType === NT_COP && this.m_nSubType !== NST_COP_SECURITY )
+			if ( this.m_nType === NT_COP && this.m_nSubType !== NST_COP_SECURITY ){
 				pIce.m_bResponse = true;
-			pIce.m_nState = STATE_INACTIVE;
+				pIce.m_nState = STATE_INACTIVE;
+			}
 		} else {
 			// Third ice is always attack
 			pIce.m_nType = ICE_ATTACK;
 
 			// Ice is response if it is in a coprocessor
-			if ( this.m_nType === NT_COP && this.m_nSubType !== NST_COP_SECURITY )
+			if ( this.m_nType === NT_COP && this.m_nSubType !== NST_COP_SECURITY ){
 				pIce.m_bResponse = true;
-			pIce.m_nState = STATE_INACTIVE;
+				pIce.m_nState = STATE_INACTIVE;
+			}
 		}
-
 		// If this is attack/trace, we have to determine a sub-type
 		if (pIce.m_nType === ICE_ATTACK) {
 			// Determine if normal/lethal
@@ -8175,8 +8176,8 @@ Ice.prototype.DoAction_Queried = function() {
 	if (this.m_nType === ICE_GATEWAY || this.m_nType === ICE_GUARDIAN || this.m_nType === ICE_TAPEWORM) {
 		// If we are gate/guard/tape, go back to guarding
 		this.m_nState = STATE_GUARDING;
-	} else if (this.m_nType === ICE_PROBE || this.m_bResponse) {
-		// For probe or response IC, wander
+	} else if (this.m_nType === ICE_PROBE || (this.m_bResponse && g_pChar.m_pSystem.m_nAlert === ALERT_RED)) {
+		// For probe or response IC (in a red alert), wander
 		this.m_nState = STATE_SEARCHING;
 		this.DoWander();
 	} else {
@@ -8296,8 +8297,8 @@ Ice.prototype.DoAction_Attacking = function() {
 		//If ICE Memory isn't active, ICE give up and go home, forgetting that the player ever existed.
 		if (g_pChar.m_bICEMemory === false) {
 			// Player is not near. Give up the chase.
-			if (this.m_nType === ICE_PROBE || this.m_bResponse) {
-				// Probe and response IC will try to search for intruders
+			if (this.m_nType === ICE_PROBE || (this.m_bResponse && g_pChar.m_pSystem.m_nAlert === ALERT_RED)) {
+				// Probe and response IC (if under a red alert) will try to search for intruders
 				this.m_nState = STATE_SEARCHING;
 				this.DoWander();
 			} else {
@@ -10555,7 +10556,7 @@ function OnUseIO() {
 		// Process depending on type
 		switch (g_pChar.m_pCurrentNode.m_nSubType) {
 			case NST_IO_ALARM:
-				MV.l_MessageView.AddMessage("External alarms have been deactivated.", BLUE);
+				MV.l_MessageView.AddMessage("External alarms have been deactivated. CPU operations will not trigger an alert.", BLUE);
 				g_pChar.m_pSystem.m_bExternalAlarmsDeactivated = true;
 				g_pChar.m_pCurrentNode.m_bActivated = true;
 				break;
@@ -10705,7 +10706,7 @@ function OnBackdoor() {
 		} else {
 			MV.l_MessageView.AddMessage("Backdoor creation failed.", BLACK);
 
-			if (iSuccess === -1) {
+			if (iSuccess === -1 && !g_pChar.m_pSystem.m_bExternalAlarmsDeactivated) {
 				// Critical failure. Set alarm
 				MV.l_MessageView.AddMessage("Oops! You have triggered an alert.", RED);
 				DoSetAlert(null, ALERT_RED);
